@@ -52,6 +52,7 @@ def parse_datum(datum_str):
 
 def lees_csv(bestand):
     rijen = []
+    te_verwijderen = []
     with open(bestand, newline='', encoding='utf-8-sig') as f:
         # Detecteer automatisch komma of puntkomma
         sample = f.read(1024)
@@ -59,18 +60,26 @@ def lees_csv(bestand):
         scheidingsteken = ';' if sample.count(';') > sample.count(',') else ','
         reader = csv.DictReader(f, delimiter=scheidingsteken)
         for row in reader:
-            if row['VAN'] and row['TOT']:
+            if not row.get('DATUM', '').strip():
+                continue
+            try:
                 datum = parse_datum(row['DATUM'])
+            except Exception:
+                continue
+            datum_str = datum.strftime('%d-%m-%Y')
+            if row.get('VAN', '').strip() and row.get('TOT', '').strip():
                 van_uur, van_min = row['VAN'].split(':')
                 tot_uur, tot_min = row['TOT'].split(':')
                 rijen.append({
-                    'datum':   datum.strftime('%d-%m-%Y'),
+                    'datum':   datum_str,
                     'van_uur': van_uur.lstrip('0') or '0',
                     'van_min': van_min,
                     'tot_uur': tot_uur.lstrip('0') or '0',
                     'tot_min': tot_min,
                 })
-    return rijen
+            else:
+                te_verwijderen.append(datum_str)
+    return rijen, te_verwijderen
 
 def sluit_popup(page, selector, naam, timeout=5000):
     try:
@@ -86,7 +95,7 @@ def archiveer_csv(csv_pad):
     shutil.copy2(csv_pad, doel)
     return doel
 
-def voer_tijdregistraties_in(email, wachtwoord, rijen, log_func, klaar_func, focus_func=None):
+def voer_tijdregistraties_in(email, wachtwoord, rijen, te_verwijderen, log_func, klaar_func, focus_func=None):
     try:
         with sync_playwright() as p:
             browser = p.chromium.launch(headless=False)
@@ -247,27 +256,29 @@ def voer_tijdregistraties_in(email, wachtwoord, rijen, log_func, klaar_func, foc
                 dom_data = page.evaluate("""
                     () => {
                         const result = {};
-                        const dateRe = /(\\d{2}-\\d{2}-\\d{4})/;
                         const timeRe = /(\\d{1,2}):(\\d{2})\\s*[-\\u2013]\\s*(\\d{1,2}):(\\d{2})/;
-                        document.querySelectorAll('td, th, div').forEach(el => {
-                            const ownText = (el.childNodes[0] && el.childNodes[0].nodeValue || '').trim();
-                            const dateMatch = ownText.match(dateRe)
-                                || (el.getAttribute('data-datum') || '').match(dateRe)
-                                || (el.getAttribute('title') || '').match(dateRe);
+                        document.querySelectorAll('td[oncontextmenu]').forEach(td => {
+                            const oc = td.getAttribute('oncontextmenu') || '';
+                            const dateMatch = oc.match(/(\\d{2}-\\d{2}-\\d{4})/);
                             if (!dateMatch) return;
                             const datum = dateMatch[1];
-                            el.querySelectorAll('*').forEach(child => {
-                                const ct = child.textContent.trim();
-                                const tm = ct.match(timeRe);
-                                if (tm && ct.length < 25) {
-                                    if (!result[datum]) result[datum] = [];
-                                    result[datum].push({
-                                        van_uur: tm[1].replace(/^0+/, '') || '0',
-                                        van_min: tm[2],
-                                        tot_uur: tm[3].replace(/^0+/, '') || '0',
-                                        tot_min: tm[4]
-                                    });
-                                }
+                            td.querySelectorAll('table[name="kalenderTijdregistratiegeregistreerd"]').forEach(tbl => {
+                                const onclickAttr = tbl.getAttribute('onclick') || '';
+                                const idMatch = onclickAttr.match(/OpenPopup\(\d+,\s*'(\d+)'\)/);
+                                const registratieId = idMatch ? idMatch[1] : '0';
+                                tbl.querySelectorAll('th[rowspan="3"]').forEach(th => {
+                                    const tm = th.textContent.trim().match(timeRe);
+                                    if (tm) {
+                                        if (!result[datum]) result[datum] = [];
+                                        result[datum].push({
+                                            id: registratieId,
+                                            van_uur: tm[1].replace(/^0+/, '') || '0',
+                                            van_min: tm[2],
+                                            tot_uur: tm[3].replace(/^0+/, '') || '0',
+                                            tot_min: tm[4]
+                                        });
+                                    }
+                                });
                             });
                         });
                         return result;
@@ -285,7 +296,9 @@ def voer_tijdregistraties_in(email, wachtwoord, rijen, log_func, klaar_func, foc
                     except Exception:
                         pass
 
-            log_func(f"[DEBUG] bestaande registraties gevonden voor: {list(bestaand.keys()) or 'geen'}")
+            csv_datums = {rij['datum'] for rij in rijen}
+            relevante_datums = [d for d in bestaand if d in csv_datums]
+            log_func(f"[DEBUG] al aanwezig in CSV-periode: {relevante_datums or 'geen'}")
 
             # CSRF token onderscheppen
             csrf_token = {'value': ''}
@@ -319,14 +332,17 @@ def voer_tijdregistraties_in(email, wachtwoord, rijen, log_func, klaar_func, foc
             page.remove_listener('request', handle_request)
 
             # Per dag invullen
-            succes = 0
+            ingevoerd = 0
+            bijgewerkt = 0
+            verwijderd = 0
             mislukt = 0
             overgeslagen = 0
             for rij in rijen:
                 datum = rij['datum']
 
-                # Stap 1: controleer of identieke registratie al bestaat
+                # Stap 1: controleer of identieke registratie al bestaat, of dat er een te updaten is
                 al_aanwezig = False
+                bestaand_id = '0'
                 for e in bestaand.get(datum, []):
                     vu = str(e.get('starttijdUur', e.get('StartUur', e.get('vanUur', e.get('van_uur', '')))))
                     vm = str(e.get('starttijdMinuut', e.get('StartMinuut', e.get('vanMinuut', e.get('van_min', '')))))
@@ -335,6 +351,8 @@ def voer_tijdregistraties_in(email, wachtwoord, rijen, log_func, klaar_func, foc
                     if vu == rij['van_uur'] and vm == rij['van_min'] and tu == rij['tot_uur'] and tm == rij['tot_min']:
                         al_aanwezig = True
                         break
+                    if bestaand_id == '0':
+                        bestaand_id = str(e.get('id', '0'))
 
                 if al_aanwezig:
                     log_func(f"  ⏭️  {datum} — overgeslagen (identiek al aanwezig)")
@@ -342,7 +360,8 @@ def voer_tijdregistraties_in(email, wachtwoord, rijen, log_func, klaar_func, foc
                     time.sleep(0.2)
                     continue
 
-                # Stap 2: invoeren
+                # Stap 2: invoeren (nieuw) of bijwerken (bestaande ID)
+                actie_label = "bijgewerkt" if bestaand_id != '0' else "ingevoerd"
                 result = page.evaluate(f"""
                     async () => {{
                         let csrfToken = '';
@@ -363,7 +382,7 @@ def voer_tijdregistraties_in(email, wachtwoord, rijen, log_func, klaar_func, foc
                         data.append('action', 'save');
                         data.append('args', JSON.stringify({{
                             "handler_url": "/handlers/popups/MedewerkerLogin/TijdregistratieEditHandler.ashx",
-                            "popupwindow_tijdEdit_id": "0",
+                            "popupwindow_tijdEdit_id": "{bestaand_id}",
                             "Hidden1": "/handlers/popups/MedewerkerLogin/TijdregistratieEditHandler.ashx",
                             "popupwindow_tijdEdit_datum": "{datum}",
                             "popupwindow_tijdEdit_starttijdUur": "{rij['van_uur']}",
@@ -390,21 +409,82 @@ def voer_tijdregistraties_in(email, wachtwoord, rijen, log_func, klaar_func, foc
                     log_func(f"  ❌ {datum} — CSRF geweigerd")
                     mislukt += 1
                 elif status == 200:
-                    log_func(f"  ✅ {datum} — ingevoerd")
-                    succes += 1
+                    log_func(f"  ✅ {datum} — {actie_label}")
+                    if actie_label == "bijgewerkt":
+                        bijgewerkt += 1
+                    else:
+                        ingevoerd += 1
                 else:
                     log_func(f"  ❌ {datum} — mislukt (status {status})")
                     mislukt += 1
 
                 time.sleep(0.5)
 
+            # Verwijder registraties die niet meer in de CSV staan
+            for datum in te_verwijderen:
+                reg_id = '0'
+                for e in bestaand.get(datum, []):
+                    reg_id = str(e.get('id', '0'))
+                    if reg_id != '0':
+                        break
+                if reg_id == '0':
+                    continue
+
+                result = page.evaluate(f"""
+                    async () => {{
+                        let csrfToken = '';
+                        if (window.__antixsrftoken) csrfToken = window.__antixsrftoken;
+                        if (!csrfToken) {{
+                            const meta = document.querySelector('meta[name="__antixsrftoken"]');
+                            if (meta) csrfToken = meta.content;
+                        }}
+                        if (!csrfToken) {{
+                            const inputs = document.querySelectorAll('input[type="hidden"]');
+                            for (const h of inputs) {{
+                                if (h.name.toLowerCase().includes('token') || h.name.toLowerCase().includes('xsrf')) {{
+                                    csrfToken = h.value; break;
+                                }}
+                            }}
+                        }}
+                        const data = new URLSearchParams();
+                        data.append('action', 'delete');
+                        data.append('args', JSON.stringify({{
+                            "handler_url": "/handlers/popups/MedewerkerLogin/TijdregistratieEditHandler.ashx",
+                            "popupwindow_tijdEdit_id": "{reg_id}",
+                            "Hidden1": "/handlers/popups/MedewerkerLogin/TijdregistratieEditHandler.ashx"
+                        }}));
+                        const headers = {{'Content-Type': 'application/x-www-form-urlencoded'}};
+                        if (csrfToken) headers['__antixsrftoken'] = csrfToken;
+                        const resp = await fetch('/handlers/popups/MedewerkerLogin/TijdregistratieEditHandler.ashx?rnd=' + Math.random(), {{
+                            method: 'POST', headers: headers, body: data
+                        }});
+                        const text = await resp.text();
+                        return {{ status: resp.status, body: text.substring(0, 200) }};
+                    }}
+                """)
+
+                body = result.get('body', '')
+                status = result.get('status')
+
+                if 'access_denied' in body or 'CSRF' in body:
+                    log_func(f"  ❌ {datum} — CSRF geweigerd (verwijderen)")
+                    mislukt += 1
+                elif status == 200:
+                    log_func(f"  🗑️  {datum} — verwijderd")
+                    verwijderd += 1
+                else:
+                    log_func(f"  ❌ {datum} — verwijderen mislukt (status {status})")
+                    mislukt += 1
+
+                time.sleep(0.5)
+
             time.sleep(2)
             browser.close()
-            klaar_func(succes, mislukt, overgeslagen)
+            klaar_func(ingevoerd, bijgewerkt, verwijderd, overgeslagen, mislukt)
 
     except Exception as e:
         log_func(f"\n❌ Fout: {e}")
-        klaar_func(0, 0, 0)
+        klaar_func(0, 0, 0, 0, 0)
 
 
 # ── GUI ──────────────────────────────────────────────────────────────────────
@@ -533,13 +613,13 @@ class App:
             return
 
         try:
-            rijen = lees_csv(self.csv_pad)
+            rijen, te_verwijderen = lees_csv(self.csv_pad)
         except Exception as e:
             messagebox.showerror("Fout", f"CSV kon niet worden gelezen:\n{e}")
             return
 
-        if not rijen:
-            messagebox.showinfo("Leeg", "Geen werkdagen met uren gevonden in de CSV.")
+        if not rijen and not te_verwijderen:
+            messagebox.showinfo("Leeg", "Geen werkdagen gevonden in de CSV.")
             return
 
         self.log.config(state="normal")
@@ -551,16 +631,19 @@ class App:
         self.log_schrijf("─" * 42)
 
         def run():
-            voer_tijdregistraties_in(email, wachtwoord, rijen, self.log_schrijf, self.klaar,
+            voer_tijdregistraties_in(email, wachtwoord, rijen, te_verwijderen, self.log_schrijf, self.klaar,
                                      lambda: self.root.after(1500, self._breng_naar_voren))
 
         threading.Thread(target=run, daemon=True).start()
 
-    def klaar(self, succes, mislukt, overgeslagen=0):
+    def klaar(self, ingevoerd, bijgewerkt, verwijderd, overgeslagen, mislukt):
         self.log_schrijf("─" * 42)
-        self.log_schrijf(f"✅ {succes} ingevoerd   ⏭️  {overgeslagen} overgeslagen   ❌ {mislukt} mislukt")
+        self.log_schrijf(
+            f"✅ {ingevoerd} ingevoerd   🔄 {bijgewerkt} bijgewerkt   🗑️  {verwijderd} verwijderd"
+            f"   ⏭️  {overgeslagen} overgeslagen   ❌ {mislukt} mislukt"
+        )
 
-        if succes > 0:
+        if ingevoerd + bijgewerkt + verwijderd > 0:
             try:
                 doel = archiveer_csv(self.csv_pad)
                 self.log_schrijf(f"📁 CSV gearchiveerd naar: {Path(doel).parent.name}/")
