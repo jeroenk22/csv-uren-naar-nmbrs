@@ -36,7 +36,7 @@ Automatisch tijdregistraties invoeren in Nmbrs vanuit een CSV bestand.
 
 Dubbelklik op **`start.bat`**
 
-De app installeert automatisch alles wat ontbreekt (playwright, python-dotenv, Chromium) en start daarna direct op. Dit kan de eerste keer een paar minuten duren.
+Is Python nog niet geïnstalleerd? Dan vraagt de app of je het automatisch wilt installeren (via winget). Daarna installeert het automatisch alles wat verder ontbreekt (playwright, python-dotenv, Chromium) en start de app op. Dit kan de eerste keer een paar minuten duren.
 
 > Wil je liever handmatig starten via CMD?
 > ```
