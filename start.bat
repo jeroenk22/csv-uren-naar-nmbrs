@@ -15,6 +15,9 @@ if errorlevel 1 (
     exit /b 1
 )
 
+:: pip bijwerken
+python -m pip install --upgrade pip >nul 2>&1
+
 :: python-dotenv aanwezig?
 python -c "import dotenv" >nul 2>&1
 if errorlevel 1 (
