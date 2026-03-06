@@ -264,7 +264,7 @@ def voer_tijdregistraties_in(email, wachtwoord, rijen, te_verwijderen, log_func,
                             const datum = dateMatch[1];
                             td.querySelectorAll('table[name="kalenderTijdregistratiegeregistreerd"]').forEach(tbl => {
                                 const onclickAttr = tbl.getAttribute('onclick') || '';
-                                const idMatch = onclickAttr.match(/OpenPopup\(\d+,\s*'(\d+)'\)/);
+                                const idMatch = onclickAttr.match(/OpenPopup\\(\\d+,\\s*'(\\d+)'\\)/);
                                 const registratieId = idMatch ? idMatch[1] : '0';
                                 tbl.querySelectorAll('th[rowspan="3"]').forEach(th => {
                                     const tm = th.textContent.trim().match(timeRe);
