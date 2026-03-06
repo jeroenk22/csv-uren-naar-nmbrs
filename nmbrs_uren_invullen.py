@@ -296,10 +296,6 @@ def voer_tijdregistraties_in(email, wachtwoord, rijen, te_verwijderen, log_func,
                     except Exception:
                         pass
 
-            csv_datums = {rij['datum'] for rij in rijen}
-            relevante_datums = [d for d in bestaand if d in csv_datums]
-            log_func(f"[DEBUG] al aanwezig in CSV-periode: {relevante_datums or 'geen'}")
-
             # CSRF token onderscheppen
             csrf_token = {'value': ''}
             def handle_request(request):
