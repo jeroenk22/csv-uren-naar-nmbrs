@@ -83,7 +83,7 @@ def archiveer_csv(csv_pad):
     archief_map = Path(csv_pad).parent / "Archief"
     archief_map.mkdir(exist_ok=True)
     doel = archief_map / Path(csv_pad).name
-    shutil.move(csv_pad, doel)
+    shutil.copy2(csv_pad, doel)
     return doel
 
 def voer_tijdregistraties_in(email, wachtwoord, rijen, log_func, klaar_func, focus_func=None):
