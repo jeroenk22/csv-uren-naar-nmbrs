@@ -80,7 +80,7 @@ def sluit_popup(page, selector, naam, timeout=5000):
         pass
 
 def archiveer_csv(csv_pad):
-    archief_map = Path(csv_pad).parent / "Archief"
+    archief_map = Path(__file__).parent / "Archief"
     archief_map.mkdir(exist_ok=True)
     doel = archief_map / Path(csv_pad).name
     shutil.copy2(csv_pad, doel)
