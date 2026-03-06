@@ -181,7 +181,7 @@ def voer_tijdregistraties_in(email, wachtwoord, rijen, log_func, klaar_func, foc
                 datum = rij['datum']
 
                 # Stap 1: controleer of identieke registratie al bestaat
-                al_aanwezig = page.evaluate(f"""
+                check_result = page.evaluate(f"""
                     async () => {{
                         let csrfToken = '';
                         if (window.__antixsrftoken) csrfToken = window.__antixsrftoken;
@@ -209,19 +209,15 @@ def voer_tijdregistraties_in(email, wachtwoord, rijen, log_func, klaar_func, foc
                                 method: 'POST', headers: headers, body: checkData
                             }});
                             const text = await resp.text();
-                            const json = JSON.parse(text);
-                            if (Array.isArray(json)) {{
-                                return json.some(e =>
-                                    String(e.starttijdUur  ?? e.van_uur  ?? '') === '{rij['van_uur']}'  &&
-                                    String(e.starttijdMinuut ?? e.van_min ?? '') === '{rij['van_min']}' &&
-                                    String(e.eindtijdUur   ?? e.tot_uur  ?? '') === '{rij['tot_uur']}'  &&
-                                    String(e.eindtijdMinuut  ?? e.tot_min ?? '') === '{rij['tot_min']}'
-                                );
-                            }}
-                        }} catch(e) {{}}
-                        return false;
+                            return {{ raw: text.substring(0, 400), skip: false }};
+                        }} catch(e) {{
+                            return {{ raw: 'ERROR: ' + e.message, skip: false }};
+                        }}
                     }}
                 """)
+
+                log_func(f"  [DEBUG] {datum} check response: {check_result.get('raw', '?')}")
+                al_aanwezig = check_result.get('skip', False)
 
                 if al_aanwezig:
                     log_func(f"  ⏭️  {datum} — overgeslagen (identiek al aanwezig)")
