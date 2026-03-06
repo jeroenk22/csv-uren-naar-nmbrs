@@ -176,8 +176,60 @@ def voer_tijdregistraties_in(email, wachtwoord, rijen, log_func, klaar_func, foc
             # Per dag invullen
             succes = 0
             mislukt = 0
+            overgeslagen = 0
             for rij in rijen:
                 datum = rij['datum']
+
+                # Stap 1: controleer of identieke registratie al bestaat
+                al_aanwezig = page.evaluate(f"""
+                    async () => {{
+                        let csrfToken = '';
+                        if (window.__antixsrftoken) csrfToken = window.__antixsrftoken;
+                        if (!csrfToken) {{
+                            const meta = document.querySelector('meta[name="__antixsrftoken"]');
+                            if (meta) csrfToken = meta.content;
+                        }}
+                        if (!csrfToken) {{
+                            const inputs = document.querySelectorAll('input[type="hidden"]');
+                            for (const h of inputs) {{
+                                if (h.name.toLowerCase().includes('token') || h.name.toLowerCase().includes('xsrf')) {{
+                                    csrfToken = h.value; break;
+                                }}
+                            }}
+                        }}
+                        const headers = {{'Content-Type': 'application/x-www-form-urlencoded'}};
+                        if (csrfToken) headers['__antixsrftoken'] = csrfToken;
+                        try {{
+                            const checkData = new URLSearchParams();
+                            checkData.append('action', 'get');
+                            checkData.append('args', JSON.stringify({{
+                                "popupwindow_tijdEdit_datum": "{datum}"
+                            }}));
+                            const resp = await fetch('/handlers/popups/MedewerkerLogin/TijdregistratieEditHandler.ashx?rnd=' + Math.random(), {{
+                                method: 'POST', headers: headers, body: checkData
+                            }});
+                            const text = await resp.text();
+                            const json = JSON.parse(text);
+                            if (Array.isArray(json)) {{
+                                return json.some(e =>
+                                    String(e.starttijdUur  ?? e.van_uur  ?? '') === '{rij['van_uur']}'  &&
+                                    String(e.starttijdMinuut ?? e.van_min ?? '') === '{rij['van_min']}' &&
+                                    String(e.eindtijdUur   ?? e.tot_uur  ?? '') === '{rij['tot_uur']}'  &&
+                                    String(e.eindtijdMinuut  ?? e.tot_min ?? '') === '{rij['tot_min']}'
+                                );
+                            }}
+                        }} catch(e) {{}}
+                        return false;
+                    }}
+                """)
+
+                if al_aanwezig:
+                    log_func(f"  ⏭️  {datum} — overgeslagen (identiek al aanwezig)")
+                    overgeslagen += 1
+                    time.sleep(0.2)
+                    continue
+
+                # Stap 2: invoeren
                 result = page.evaluate(f"""
                     async () => {{
                         let csrfToken = '';
@@ -235,11 +287,11 @@ def voer_tijdregistraties_in(email, wachtwoord, rijen, log_func, klaar_func, foc
 
             time.sleep(2)
             browser.close()
-            klaar_func(succes, mislukt)
+            klaar_func(succes, mislukt, overgeslagen)
 
     except Exception as e:
         log_func(f"\n❌ Fout: {e}")
-        klaar_func(0, 0)
+        klaar_func(0, 0, 0)
 
 
 # ── GUI ──────────────────────────────────────────────────────────────────────
@@ -391,9 +443,9 @@ class App:
 
         threading.Thread(target=run, daemon=True).start()
 
-    def klaar(self, succes, mislukt):
+    def klaar(self, succes, mislukt, overgeslagen=0):
         self.log_schrijf("─" * 42)
-        self.log_schrijf(f"✅ {succes} ingevoerd   ❌ {mislukt} mislukt")
+        self.log_schrijf(f"✅ {succes} ingevoerd   ⏭️  {overgeslagen} overgeslagen   ❌ {mislukt} mislukt")
 
         if succes > 0:
             try:
