@@ -23,7 +23,6 @@ if errorlevel 1 (
         )
         echo Python installeren via winget...
         winget install --id Python.Python.3 --source winget --silent --accept-package-agreements --accept-source-agreements
-        python --version >nul 2>&1
         if errorlevel 1 (
             echo.
             echo Installatie mislukt. Probeer het handmatig via: https://www.python.org/downloads/
@@ -31,7 +30,9 @@ if errorlevel 1 (
             pause
             exit /b 1
         )
-        echo Python succesvol geinstalleerd!
+        echo Python geinstalleerd! Opnieuw opstarten...
+        start "" cmd /c "%~f0"
+        exit /b 0
     ) else (
         echo.
         echo Download Python handmatig via: https://www.python.org/downloads/
