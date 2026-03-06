@@ -36,5 +36,5 @@ if errorlevel 1 (
     playwright install chromium
 )
 
-:: Start!
-python nmbrs_uren_invullen.py
+:: Start! (pythonw = geen consolevenster, bat sluit direct)
+pythonw nmbrs_uren_invullen.py
