@@ -85,11 +85,13 @@ def archiveer_csv(csv_pad):
     shutil.move(csv_pad, doel)
     return doel
 
-def voer_tijdregistraties_in(email, wachtwoord, rijen, log_func, klaar_func):
+def voer_tijdregistraties_in(email, wachtwoord, rijen, log_func, klaar_func, focus_func=None):
     try:
         with sync_playwright() as p:
             browser = p.chromium.launch(headless=False)
             page = browser.new_page()
+            if focus_func:
+                focus_func()
 
             log_func("Inloggen bij Nmbrs...")
             page.goto(NMBRS_LOGIN_URL)
@@ -325,6 +327,10 @@ class App:
         )
         self.start_btn.pack(pady=20)
 
+    def _breng_naar_voren(self):
+        self.root.lift()
+        self.root.focus_force()
+
     def kies_csv(self):
         pad = filedialog.askopenfilename(
             title="Selecteer CSV bestand",
@@ -380,7 +386,8 @@ class App:
         self.log_schrijf("─" * 42)
 
         def run():
-            voer_tijdregistraties_in(email, wachtwoord, rijen, self.log_schrijf, self.klaar)
+            voer_tijdregistraties_in(email, wachtwoord, rijen, self.log_schrijf, self.klaar,
+                                     lambda: self.root.after(1500, self._breng_naar_voren))
 
         threading.Thread(target=run, daemon=True).start()
 
