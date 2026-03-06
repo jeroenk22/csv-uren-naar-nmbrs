@@ -100,16 +100,39 @@ def voer_tijdregistraties_in(email, wachtwoord, rijen, log_func, klaar_func, foc
             sluit_popup(page, '#onetrust-accept-btn-handler', 'Cookie popup')
 
             page.fill('input[type="email"]', email)
-            page.click('#LoginButton')
+            for sel in ['#LoginButton', 'button[type="submit"]', 'button:has-text("Volgende")', 'button:has-text("Next")']:
+                try:
+                    page.click(sel, timeout=3000)
+                    break
+                except Exception:
+                    continue
             page.wait_for_load_state('networkidle')
             time.sleep(1)
 
             sluit_popup(page, '#onetrust-accept-btn-handler', 'Cookie popup')
 
             page.fill('input[type="password"]', wachtwoord)
-            page.click('#LoginButton')
+            for sel in ['#LoginButton', 'button[type="submit"]', 'button:has-text("Inloggen")', 'button:has-text("Login")']:
+                try:
+                    page.click(sel, timeout=3000)
+                    break
+                except Exception:
+                    continue
             page.wait_for_load_state('networkidle')
             time.sleep(2)
+
+            # Controleer op login-fout
+            for fout_sel in ['.validation-summary-errors', '.alert-danger', '[class*="error"]', '[class*="Error"]']:
+                try:
+                    el = page.locator(fout_sel).first
+                    if el.is_visible(timeout=1500):
+                        fout_tekst = el.inner_text().strip().replace('\n', ' ')
+                        log_func(f"❌ Inlogfout: {fout_tekst}")
+                        browser.close()
+                        klaar_func(0, 0, 0)
+                        return
+                except Exception:
+                    continue
 
             # Account kiezen — werkt met 0, 1 of meerdere profielen
             try:
