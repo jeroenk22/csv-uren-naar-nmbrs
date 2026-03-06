@@ -59,6 +59,11 @@ EMAIL=jouwemailadres@gmail.com
 WACHTWOORD=jouwwachtwoord
 ```
 
+> **Bevat je wachtwoord een `#`?** Zet het dan tussen aanhalingstekens, anders wordt alles na `#` genegeerd:
+> ```
+> WACHTWOORD="abc#123"
+> ```
+
 4. Sla op en sluit
 
 > **Let op:** Laat je `.env` bestand nooit naar GitHub pushen. Dit is al geblokkeerd via `.gitignore`.  
