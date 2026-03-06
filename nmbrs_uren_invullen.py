@@ -10,6 +10,7 @@ Gebruik:
 """
 
 import csv
+import json
 import time
 import shutil
 import threading
@@ -149,6 +150,26 @@ def voer_tijdregistraties_in(email, wachtwoord, rijen, log_func, klaar_func, foc
             log_func("Ingelogd!")
             sluit_popup(page, '.walkme-custom-balloon-close-button', 'Walkme popup')
 
+            # Injecteer fetch-interceptor om bestaande registraties te vangen
+            page.evaluate("""
+                () => {
+                    window.__nmbrs_responses = [];
+                    const _origFetch = window.fetch;
+                    window.fetch = async function(...args) {
+                        const resp = await _origFetch.apply(this, args);
+                        const clone = resp.clone();
+                        try {
+                            const text = await clone.text();
+                            if (text.length > 20) {
+                                const url = typeof args[0] === 'string' ? args[0] : ((args[0] || {}).url || '');
+                                window.__nmbrs_responses.push({url, body: text.substring(0, 5000)});
+                            }
+                        } catch(e) {}
+                        return resp;
+                    };
+                }
+            """)
+
             log_func("Naar Tijdregistratie navigeren...")
             try:
                 page.click('#widgetCopilotTabMenu', timeout=5000)
@@ -164,6 +185,38 @@ def voer_tijdregistraties_in(email, wachtwoord, rijen, log_func, klaar_func, foc
             page.wait_for_load_state('networkidle')
             time.sleep(2)
             log_func("Tijdregistratie pagina geladen!")
+
+            # Verwerk gevangen responses naar bestaande registraties per datum
+            bestaand = {}  # datum (DD-MM-YYYY) -> list of entries
+            raw_responses = page.evaluate("() => window.__nmbrs_responses || []")
+            for r in raw_responses:
+                try:
+                    data = json.loads(r['body'])
+                    entries = data if isinstance(data, list) else None
+                    if not entries and isinstance(data, dict):
+                        for k in ('data', 'items', 'result', 'registraties'):
+                            if isinstance(data.get(k), list):
+                                entries = data[k]
+                                break
+                    if not entries:
+                        continue
+                    for e in entries:
+                        if not isinstance(e, dict):
+                            continue
+                        for dk in ('datum', 'Datum', 'date', 'Date'):
+                            v = e.get(dk)
+                            if v:
+                                for fmt in ('%d-%m-%Y', '%Y-%m-%d', '%d/%m/%Y'):
+                                    try:
+                                        norm = datetime.strptime(str(v), fmt).strftime('%d-%m-%Y')
+                                        bestaand.setdefault(norm, []).append(e)
+                                        break
+                                    except ValueError:
+                                        pass
+                                break
+                except Exception:
+                    pass
+            log_func(f"[DEBUG] bestaande registraties gevonden voor: {list(bestaand.keys()) or 'geen'}")
 
             # CSRF token onderscheppen
             csrf_token = {'value': ''}
@@ -204,43 +257,15 @@ def voer_tijdregistraties_in(email, wachtwoord, rijen, log_func, klaar_func, foc
                 datum = rij['datum']
 
                 # Stap 1: controleer of identieke registratie al bestaat
-                check_result = page.evaluate(f"""
-                    async () => {{
-                        let csrfToken = '';
-                        if (window.__antixsrftoken) csrfToken = window.__antixsrftoken;
-                        if (!csrfToken) {{
-                            const meta = document.querySelector('meta[name="__antixsrftoken"]');
-                            if (meta) csrfToken = meta.content;
-                        }}
-                        if (!csrfToken) {{
-                            const inputs = document.querySelectorAll('input[type="hidden"]');
-                            for (const h of inputs) {{
-                                if (h.name.toLowerCase().includes('token') || h.name.toLowerCase().includes('xsrf')) {{
-                                    csrfToken = h.value; break;
-                                }}
-                            }}
-                        }}
-                        const headers = {{'Content-Type': 'application/x-www-form-urlencoded'}};
-                        if (csrfToken) headers['__antixsrftoken'] = csrfToken;
-                        try {{
-                            const checkData = new URLSearchParams();
-                            checkData.append('action', 'get');
-                            checkData.append('args', JSON.stringify({{
-                                "popupwindow_tijdEdit_datum": "{datum}"
-                            }}));
-                            const resp = await fetch('/handlers/popups/MedewerkerLogin/TijdregistratieEditHandler.ashx?rnd=' + Math.random(), {{
-                                method: 'POST', headers: headers, body: checkData
-                            }});
-                            const text = await resp.text();
-                            return {{ raw: text.substring(0, 400), skip: false }};
-                        }} catch(e) {{
-                            return {{ raw: 'ERROR: ' + e.message, skip: false }};
-                        }}
-                    }}
-                """)
-
-                log_func(f"  [DEBUG] {datum} check response: {check_result.get('raw', '?')}")
-                al_aanwezig = check_result.get('skip', False)
+                al_aanwezig = False
+                for e in bestaand.get(datum, []):
+                    vu = str(e.get('starttijdUur', e.get('StartUur', e.get('vanUur', e.get('van_uur', '')))))
+                    vm = str(e.get('starttijdMinuut', e.get('StartMinuut', e.get('vanMinuut', e.get('van_min', '')))))
+                    tu = str(e.get('eindtijdUur', e.get('EindUur', e.get('totUur', e.get('tot_uur', '')))))
+                    tm = str(e.get('eindtijdMinuut', e.get('EindMinuut', e.get('totMinuut', e.get('tot_min', '')))))
+                    if vu == rij['van_uur'] and vm == rij['van_min'] and tu == rij['tot_uur'] and tm == rij['tot_min']:
+                        al_aanwezig = True
+                        break
 
                 if al_aanwezig:
                     log_func(f"  ⏭️  {datum} — overgeslagen (identiek al aanwezig)")
