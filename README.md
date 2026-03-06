@@ -7,24 +7,11 @@ Automatisch tijdregistraties invoeren in Nmbrs vanuit een CSV bestand.
 ## Vereisten
 
 - Windows 10 of hoger
-- Python 3.10 of hoger
 - Internetverbinding
 
 ---
 
-## Stap 1 — Python installeren (alleen als je het nog niet hebt)
-
-1. Ga naar https://www.python.org/downloads/
-2. Klik op de grote gele knop **"Download Python 3.x.x"**
-3. Open het gedownloade bestand
-4. ⚠️ **Vink onderaan "Add Python to PATH" aan** — dit is belangrijk!
-5. Klik op **"Install Now"**
-6. Na installatie: open CMD en typ `python --version`
-   Je ziet dan zoiets als `Python 3.12.6` — dan werkt het
-
----
-
-## Stap 2 — Bestanden downloaden
+## Stap 1 — Bestanden downloaden
 
 1. Klik rechtsboven op de groene knop **"Code"**
 2. Klik op **"Download ZIP"**
@@ -32,7 +19,7 @@ Automatisch tijdregistraties invoeren in Nmbrs vanuit een CSV bestand.
 
 ---
 
-## Stap 3 — Het programma starten
+## Stap 2 — Het programma starten
 
 Dubbelklik op **`start.bat`**
 
@@ -48,7 +35,7 @@ Is Python nog niet geïnstalleerd? Dan vraagt de app of je het automatisch wilt 
 
 ---
 
-## Stap 4 — CSV exporteren vanuit Google Sheets of Excel
+## Stap 3 — CSV exporteren vanuit Google Sheets of Excel
 
 **Google Sheets:**
 - Ga naar Bestand → Downloaden → Kommagescheiden waarden (.csv)
