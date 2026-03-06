@@ -150,22 +150,48 @@ def voer_tijdregistraties_in(email, wachtwoord, rijen, log_func, klaar_func, foc
             log_func("Ingelogd!")
             sluit_popup(page, '.walkme-custom-balloon-close-button', 'Walkme popup')
 
-            # Injecteer fetch-interceptor om bestaande registraties te vangen
+            # Injecteer fetch + XHR interceptor om bestaande registraties te vangen
             page.evaluate("""
                 () => {
                     window.__nmbrs_responses = [];
-                    const _origFetch = window.fetch;
-                    window.fetch = async function(...args) {
-                        const resp = await _origFetch.apply(this, args);
-                        const clone = resp.clone();
-                        try {
-                            const text = await clone.text();
-                            if (text.length > 20) {
-                                const url = typeof args[0] === 'string' ? args[0] : ((args[0] || {}).url || '');
-                                window.__nmbrs_responses.push({url, body: text.substring(0, 5000)});
-                            }
-                        } catch(e) {}
-                        return resp;
+
+                    // Fetch interceptor
+                    if (window.fetch) {
+                        const _origFetch = window.fetch;
+                        window.fetch = async function(...args) {
+                            const resp = await _origFetch.apply(this, args);
+                            const clone = resp.clone();
+                            try {
+                                const text = await clone.text();
+                                if (text.length > 20) {
+                                    const url = typeof args[0] === 'string' ? args[0] : ((args[0] || {}).url || '');
+                                    window.__nmbrs_responses.push({url, body: text.substring(0, 5000)});
+                                }
+                            } catch(e) {}
+                            return resp;
+                        };
+                    }
+
+                    // XHR interceptor via prototype
+                    const _origOpen = XMLHttpRequest.prototype.open;
+                    const _origSend = XMLHttpRequest.prototype.send;
+                    XMLHttpRequest.prototype.open = function(method, url, ...rest) {
+                        this.__url = url;
+                        return _origOpen.apply(this, [method, url, ...rest]);
+                    };
+                    XMLHttpRequest.prototype.send = function(...rest) {
+                        const self = this;
+                        this.addEventListener('load', function() {
+                            try {
+                                if (self.responseText && self.responseText.length > 20) {
+                                    window.__nmbrs_responses.push({
+                                        url: self.__url || '',
+                                        body: self.responseText.substring(0, 5000)
+                                    });
+                                }
+                            } catch(e) {}
+                        });
+                        return _origSend.apply(this, rest);
                     };
                 }
             """)
@@ -216,6 +242,49 @@ def voer_tijdregistraties_in(email, wachtwoord, rijen, log_func, klaar_func, foc
                                 break
                 except Exception:
                     pass
+            # Fallback: scrape DOM als netwerk niets opleverde
+            if not bestaand:
+                dom_data = page.evaluate("""
+                    () => {
+                        const result = {};
+                        const dateRe = /(\\d{2}-\\d{2}-\\d{4})/;
+                        const timeRe = /(\\d{1,2}):(\\d{2})\\s*[-\\u2013]\\s*(\\d{1,2}):(\\d{2})/;
+                        document.querySelectorAll('td, th, div').forEach(el => {
+                            const ownText = (el.childNodes[0] && el.childNodes[0].nodeValue || '').trim();
+                            const dateMatch = ownText.match(dateRe)
+                                || (el.getAttribute('data-datum') || '').match(dateRe)
+                                || (el.getAttribute('title') || '').match(dateRe);
+                            if (!dateMatch) return;
+                            const datum = dateMatch[1];
+                            el.querySelectorAll('*').forEach(child => {
+                                const ct = child.textContent.trim();
+                                const tm = ct.match(timeRe);
+                                if (tm && ct.length < 25) {
+                                    if (!result[datum]) result[datum] = [];
+                                    result[datum].push({
+                                        van_uur: tm[1].replace(/^0+/, '') || '0',
+                                        van_min: tm[2],
+                                        tot_uur: tm[3].replace(/^0+/, '') || '0',
+                                        tot_min: tm[4]
+                                    });
+                                }
+                            });
+                        });
+                        return result;
+                    }
+                """)
+                for datum_key, entries in dom_data.items():
+                    try:
+                        for fmt in ('%d-%m-%Y', '%Y-%m-%d', '%d/%m/%Y'):
+                            try:
+                                norm = datetime.strptime(datum_key, fmt).strftime('%d-%m-%Y')
+                                bestaand.setdefault(norm, []).extend(entries)
+                                break
+                            except ValueError:
+                                pass
+                    except Exception:
+                        pass
+
             log_func(f"[DEBUG] bestaande registraties gevonden voor: {list(bestaand.keys()) or 'geen'}")
 
             # CSRF token onderscheppen
