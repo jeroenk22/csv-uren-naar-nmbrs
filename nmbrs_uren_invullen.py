@@ -21,14 +21,13 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, scrolledtext
 
 # ─────────────────────────────────────────
-# INSTELLINGEN — optioneel hardcoded invullen
-# Laat leeg ("") om invoervelden in de GUI te tonen
-# ─────────────────────────────────────────
+ENV_PAD = Path(__file__).parent / '.env'
 try:
-    from dotenv import load_dotenv
-    load_dotenv()
+    from dotenv import load_dotenv, set_key
+    load_dotenv(ENV_PAD)
+    DOTENV_BESCHIKBAAR = True
 except ImportError:
-    pass
+    DOTENV_BESCHIKBAAR = False
 
 EMAIL      = os.getenv("EMAIL", "")
 WACHTWOORD = os.getenv("WACHTWOORD", "")
@@ -247,7 +246,7 @@ class App:
     def __init__(self, root):
         self.root = root
         self.root.title("Nmbrs Uren Invullen")
-        self.root.geometry("560x680" if not (EMAIL and WACHTWOORD) else "560x520")
+        self.root.geometry("560x700")
         self.root.resizable(False, False)
         self.root.configure(bg="#1a1a2e")
         self.csv_pad = None
@@ -267,26 +266,29 @@ class App:
         frame = tk.Frame(self.root, bg="#1a1a2e")
         frame.pack(padx=30, fill="x")
 
-        # Login velden — alleen tonen als niet hardcoded
-        if not (EMAIL and WACHTWOORD):
-            self._label(frame, "E-mailadres")
-            self.email_var = tk.StringVar()
-            tk.Entry(frame, textvariable=self.email_var,
-                     font=("Courier New", 10), bg="#16213e", fg="#e0e0e0",
-                     insertbackground="white", relief="flat",
-                     highlightthickness=1, highlightbackground="#0f3460",
-                     highlightcolor="#e94560").pack(fill="x", ipady=6, pady=(4, 12))
+        # Login velden
+        self._label(frame, "E-mailadres")
+        self.email_var = tk.StringVar(value=EMAIL)
+        tk.Entry(frame, textvariable=self.email_var,
+                 font=("Courier New", 10), bg="#16213e", fg="#e0e0e0",
+                 insertbackground="white", relief="flat",
+                 highlightthickness=1, highlightbackground="#0f3460",
+                 highlightcolor="#e94560").pack(fill="x", ipady=6, pady=(4, 12))
 
-            self._label(frame, "Wachtwoord")
-            self.pass_var = tk.StringVar()
-            tk.Entry(frame, textvariable=self.pass_var, show="●",
-                     font=("Courier New", 10), bg="#16213e", fg="#e0e0e0",
-                     insertbackground="white", relief="flat",
-                     highlightthickness=1, highlightbackground="#0f3460",
-                     highlightcolor="#e94560").pack(fill="x", ipady=6, pady=(4, 12))
-        else:
-            self.email_var = None
-            self.pass_var = None
+        self._label(frame, "Wachtwoord")
+        self.pass_var = tk.StringVar(value=WACHTWOORD)
+        tk.Entry(frame, textvariable=self.pass_var, show="●",
+                 font=("Courier New", 10), bg="#16213e", fg="#e0e0e0",
+                 insertbackground="white", relief="flat",
+                 highlightthickness=1, highlightbackground="#0f3460",
+                 highlightcolor="#e94560").pack(fill="x", ipady=6, pady=(4, 12))
+
+        self.onthoud_var = tk.BooleanVar(value=bool(EMAIL and WACHTWOORD))
+        tk.Checkbutton(frame, text="Onthoud inloggegevens",
+                       variable=self.onthoud_var,
+                       font=("Courier New", 9), bg="#1a1a2e", fg="#a0a0c0",
+                       selectcolor="#16213e", activebackground="#1a1a2e",
+                       activeforeground="#e0e0e0").pack(anchor="w", pady=(0, 12))
 
         # CSV selectie
         self._label(frame, "CSV bestand")
@@ -340,9 +342,16 @@ class App:
         self.root.update_idletasks()
 
     def start(self):
-        # Haal credentials op — hardcoded of uit GUI
-        email      = EMAIL      if EMAIL      else (self.email_var.get().strip() if self.email_var else "")
-        wachtwoord = WACHTWOORD if WACHTWOORD else (self.pass_var.get()          if self.pass_var  else "")
+        email      = self.email_var.get().strip()
+        wachtwoord = self.pass_var.get()
+
+        if self.onthoud_var.get():
+            if DOTENV_BESCHIKBAAR:
+                set_key(str(ENV_PAD), 'EMAIL', email)
+                set_key(str(ENV_PAD), 'WACHTWOORD', wachtwoord)
+        else:
+            if ENV_PAD.exists():
+                ENV_PAD.unlink()
 
         if not email or not wachtwoord:
             messagebox.showwarning("Inloggegevens", "Vul je e-mailadres en wachtwoord in.")
