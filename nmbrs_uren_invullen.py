@@ -247,7 +247,7 @@ class App:
     def __init__(self, root):
         self.root = root
         self.root.title("Nmbrs Uren Invullen")
-        self.root.geometry("560x620" if not (EMAIL and WACHTWOORD) else "560x520")
+        self.root.geometry("560x680" if not (EMAIL and WACHTWOORD) else "560x520")
         self.root.resizable(False, False)
         self.root.configure(bg="#1a1a2e")
         self.csv_pad = None
