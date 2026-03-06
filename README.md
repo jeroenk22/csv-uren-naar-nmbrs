@@ -19,7 +19,7 @@ Automatisch tijdregistraties invoeren in Nmbrs vanuit een CSV bestand.
 3. Open het gedownloade bestand
 4. ⚠️ **Vink onderaan "Add Python to PATH" aan** — dit is belangrijk!
 5. Klik op **"Install Now"**
-6. Na installatie: open CMD en typ `python --version`  
+6. Na installatie: open CMD en typ `python --version`
    Je ziet dan zoiets als `Python 3.12.6` — dan werkt het
 
 ---
@@ -32,46 +32,23 @@ Automatisch tijdregistraties invoeren in Nmbrs vanuit een CSV bestand.
 
 ---
 
-## Stap 3 — Installatie (eenmalig)
+## Stap 3 — Het programma starten
 
-Open CMD (druk op Windows-toets, typ `cmd`, druk Enter) en voer deze commando's één voor één uit:
+Dubbelklik op **`start.bat`**
 
-```
-cd C:\Users\JouwNaam\Apps\uren-naar-nmbrs
-pip install playwright python-dotenv
-playwright install chromium
-```
+De app installeert automatisch alles wat ontbreekt (playwright, python-dotenv, Chromium) en start daarna direct op. Dit kan de eerste keer een paar minuten duren.
 
-Dit kan een paar minuten duren.
+> Wil je liever handmatig starten via CMD?
+> ```
+> cd C:\Users\JouwNaam\Apps\uren-naar-nmbrs
+> pip install playwright python-dotenv
+> playwright install chromium
+> python nmbrs_uren_invullen.py
+> ```
 
 ---
 
-## Stap 4 — Inloggegevens instellen (optioneel)
-
-Wil je je gegevens opslaan zodat je ze niet elke keer hoeft in te typen?
-
-1. Kopieer het bestand `.env.example` en hernoem de kopie naar `.env`
-2. Open `.env` met Kladblok
-3. Vul je gegevens in:
-
-```
-EMAIL=jouwemailadres@gmail.com
-WACHTWOORD=jouwwachtwoord
-```
-
-> **Bevat je wachtwoord een `#`?** Zet het dan tussen aanhalingstekens, anders wordt alles na `#` genegeerd:
-> ```
-> WACHTWOORD="abc#123"
-> ```
-
-4. Sla op en sluit
-
-> **Let op:** Laat je `.env` bestand nooit naar GitHub pushen. Dit is al geblokkeerd via `.gitignore`.  
-> Heb je geen `.env` bestand? Dan vraagt de app gewoon om je gegevens bij het opstarten.
-
----
-
-## Stap 5 — CSV exporteren vanuit Google Sheets of Excel
+## Stap 4 — CSV exporteren vanuit Google Sheets of Excel
 
 **Google Sheets:**
 - Ga naar Bestand → Downloaden → Kommagescheiden waarden (.csv)
@@ -85,26 +62,34 @@ Het CSV bestand moet deze kolommen hebben:
 |-------|-----|-----|-------|--------|
 | maandag 2 februari 2026 | 08:30 | 17:30 | | 09:00 |
 
----
+> Komma's én puntkomma's als scheidingsteken worden automatisch herkend.
 
-## Stap 6 — Het programma starten
-
-Dubbelklik op `nmbrs_uren_invullen.py`  
-— of open CMD en typ:
-
-```
-python nmbrs_uren_invullen.py
-```
+Rijen zonder tijden (lege VAN/TOT) worden beschouwd als vrije dagen en eventueel uit Nmbrs verwijderd als daar al een registratie stond.
 
 ---
 
 ## Gebruik
 
-1. Vul je e-mailadres en wachtwoord in (als je geen `.env` hebt ingesteld)
-2. Klik op **Bladeren** en selecteer je CSV bestand
-3. Klik op **Start verwerking**
-4. Er opent automatisch een browservenster — laat dit open staan
-5. Na afloop wordt de CSV automatisch naar de map `Archief/` verplaatst
+1. Vul je e-mailadres en wachtwoord in
+2. Vink **"Onthoud inloggegevens"** aan als je ze wilt bewaren voor de volgende keer
+3. Klik op **Bladeren** en selecteer je CSV bestand
+4. Klik op **Start verwerking**
+5. Er opent automatisch een browservenster — laat dit open staan
+
+Na afloop:
+- Nieuwe dagen worden **ingevoerd**
+- Dagen die al bestonden maar anders zijn worden **bijgewerkt**
+- Dagen zonder tijden die al in Nmbrs stonden worden **verwijderd**
+- De CSV wordt **gekopieerd** naar de map `Archief/`
+
+> **Inloggegevens opslaan via `.env`** (alternatief voor de checkbox):
+> Kopieer `.env.example` naar `.env`, open het met Kladblok en vul in:
+> ```
+> EMAIL=jouwemailadres@gmail.com
+> WACHTWOORD=jouwwachtwoord
+> ```
+> Bevat je wachtwoord een `#`? Zet het dan tussen aanhalingstekens: `WACHTWOORD="abc#123"`
+> Let op: push `.env` nooit naar GitHub — dit is al geblokkeerd via `.gitignore`.
 
 ---
 
@@ -114,6 +99,6 @@ python nmbrs_uren_invullen.py
 |----------|-----------|
 | `python` werkt niet in CMD | Herinstalleer Python en vink "Add to PATH" aan |
 | `pip` werkt niet | Typ `python -m pip install playwright python-dotenv` |
-| Browser opent maar logt niet in | Controleer je e-mailadres en wachtwoord in `.env` |
+| Browser opent maar logt niet in | Controleer je e-mailadres en wachtwoord |
 | Uren worden niet zichtbaar in Nmbrs | Navigeer in Nmbrs handmatig naar de juiste maand |
 | CSV wordt niet herkend | Zorg dat de kolomnamen exact zijn: DATUM, VAN, TOT, PAUZE, TOTAAL |
