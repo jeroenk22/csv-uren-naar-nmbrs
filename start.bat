@@ -9,10 +9,37 @@ python --version >nul 2>&1
 if errorlevel 1 (
     echo.
     echo Python is niet geinstalleerd.
-    echo Download via: https://www.python.org/downloads/
-    echo.
-    pause
-    exit /b 1
+    set /p INSTALLEER="Wil je Python nu automatisch installeren? (J/N): "
+    if /i "%INSTALLEER%"=="J" (
+        winget --version >nul 2>&1
+        if errorlevel 1 (
+            echo.
+            echo Automatisch installeren lukt niet op dit systeem.
+            echo Download Python handmatig via: https://www.python.org/downloads/
+            echo Vergeet niet "Add Python to PATH" aan te vinken!
+            echo.
+            pause
+            exit /b 1
+        )
+        echo Python installeren via winget...
+        winget install --id Python.Python.3 --source winget --silent --accept-package-agreements --accept-source-agreements
+        python --version >nul 2>&1
+        if errorlevel 1 (
+            echo.
+            echo Installatie mislukt. Probeer het handmatig via: https://www.python.org/downloads/
+            echo.
+            pause
+            exit /b 1
+        )
+        echo Python succesvol geinstalleerd!
+    ) else (
+        echo.
+        echo Download Python handmatig via: https://www.python.org/downloads/
+        echo Vergeet niet "Add Python to PATH" aan te vinken!
+        echo.
+        pause
+        exit /b 1
+    )
 )
 
 :: pip bijwerken
