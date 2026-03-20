@@ -149,7 +149,7 @@ def voer_tijdregistraties_in(email, wachtwoord, rijen, te_verwijderen, log_func,
                 profielen = page.locator('ul.account-picker-profile')
                 aantal = profielen.count()
                 if aantal > 0:
-                    profielen.first.click()
+                    profielen.nth(1).click()
                     page.wait_for_load_state('networkidle')
                     time.sleep(2)
                     log_func("Account gekozen!")
