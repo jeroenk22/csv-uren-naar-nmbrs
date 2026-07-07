@@ -26,9 +26,8 @@ ENV_PAD = Path(__file__).parent / '.env'
 try:
     from dotenv import load_dotenv, set_key
     load_dotenv(ENV_PAD)
-    DOTENV_BESCHIKBAAR = True
 except ImportError:
-    DOTENV_BESCHIKBAAR = False
+    set_key = None
 
 EMAIL      = os.getenv("EMAIL", "")
 WACHTWOORD = os.getenv("WACHTWOORD", "")
@@ -593,7 +592,7 @@ class App:
         wachtwoord = self.pass_var.get()
 
         if self.onthoud_var.get():
-            if DOTENV_BESCHIKBAAR:
+            if set_key is not None:
                 set_key(str(ENV_PAD), 'EMAIL', email)
                 set_key(str(ENV_PAD), 'WACHTWOORD', wachtwoord)
         else:
