@@ -9,8 +9,12 @@ Gebruik:
   python nmbrs_uren_invullen.py
 """
 
+import base64
 import csv
+import hashlib
+import hmac
 import json
+import struct
 import time
 import shutil
 import threading
@@ -24,13 +28,15 @@ from tkinter import filedialog, messagebox, scrolledtext, simpledialog
 # ─────────────────────────────────────────
 ENV_PAD = Path(__file__).parent / '.env'
 try:
-    from dotenv import load_dotenv, set_key
+    from dotenv import load_dotenv, set_key, unset_key
     load_dotenv(ENV_PAD)
 except ImportError:
     set_key = None
+    unset_key = None
 
-EMAIL      = os.getenv("EMAIL", "")
-WACHTWOORD = os.getenv("WACHTWOORD", "")
+EMAIL       = os.getenv("EMAIL", "")
+WACHTWOORD  = os.getenv("WACHTWOORD", "")
+TOTP_SECRET = os.getenv("TOTP_SECRET", "")  # optioneel: 2FA-code automatisch invullen
 # ─────────────────────────────────────────
 
 NMBRS_LOGIN_URL = "https://login.nmbrsapp.com/index.html"
@@ -89,6 +95,15 @@ def sluit_popup(page, selector, naam, timeout=5000):
     except Exception:
         pass
 
+def totp_code(secret, tijd=None):
+    """Berekent de huidige 6-cijferige 2FA-code (TOTP, RFC 6238), net als een Authenticator-app."""
+    secret = secret.replace(' ', '').upper()
+    sleutel = base64.b32decode(secret + '=' * (-len(secret) % 8))
+    teller = int((time.time() if tijd is None else tijd) // 30)
+    h = hmac.new(sleutel, struct.pack('>Q', teller), hashlib.sha1).digest()
+    o = h[-1] & 0x0F
+    return str((struct.unpack('>I', h[o:o + 4])[0] & 0x7FFFFFFF) % 1_000_000).zfill(6)
+
 def zichtbaar(page, selector):
     try:
         return page.locator(selector).first.is_visible()
@@ -110,6 +125,7 @@ def log_in(page, email, wachtwoord, log_func, vraag_code_func=None):
     Geeft True terug bij succes, False bij een inlogfout of time-out."""
     page.goto(NMBRS_LOGIN_URL)
     code_handmatig = False
+    code_automatisch_geprobeerd = False
     deadline = time.time() + LOGIN_TIMEOUT
     while time.time() < deadline:
         page.wait_for_load_state('networkidle')
@@ -128,8 +144,17 @@ def log_in(page, email, wachtwoord, log_func, vraag_code_func=None):
                 continue
             if fout:
                 log_func(f"⚠️  {fout}")
-            log_func("Tweestapsverificatie: vul de code uit je Authenticator-app in...")
-            code = vraag_code_func() if vraag_code_func else None
+            code = None
+            if TOTP_SECRET and not code_automatisch_geprobeerd:
+                code_automatisch_geprobeerd = True
+                try:
+                    code = totp_code(TOTP_SECRET)
+                    log_func("Tweestapsverificatie: code automatisch ingevuld")
+                except Exception:
+                    log_func("⚠️  TOTP_SECRET in .env is ongeldig — code wordt handmatig gevraagd")
+            if not code:
+                log_func("Tweestapsverificatie: vul de code uit je Authenticator-app in...")
+                code = vraag_code_func() if vraag_code_func else None
             if not code:
                 code_handmatig = True
                 log_func("Geen code ingevuld — vul de code in het browservenster in.")
@@ -638,8 +663,12 @@ class App:
             if set_key is not None:
                 set_key(str(ENV_PAD), 'EMAIL', email)
                 set_key(str(ENV_PAD), 'WACHTWOORD', wachtwoord)
-        else:
-            if ENV_PAD.exists():
+        elif ENV_PAD.exists():
+            # Alleen de inloggegevens wissen; overige instellingen (zoals TOTP_SECRET) blijven staan
+            if unset_key is not None:
+                unset_key(str(ENV_PAD), 'EMAIL')
+                unset_key(str(ENV_PAD), 'WACHTWOORD')
+            else:
                 ENV_PAD.unlink()
 
         if not email or not wachtwoord:

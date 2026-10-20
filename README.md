@@ -82,6 +82,15 @@ Na afloop:
 > Bevat je wachtwoord een `#`? Zet het dan tussen aanhalingstekens: `WACHTWOORD="abc#123"`
 > Let op: push `.env` nooit naar GitHub — dit is al geblokkeerd via `.gitignore`.
 
+> **2FA-code automatisch laten invullen** (optioneel):
+> Zet de geheime sleutel van je Authenticator-koppeling in `.env`:
+> ```
+> TOTP_SECRET=ABCD EFGH IJKL MNOP
+> ```
+> Die sleutel krijg je bij het instellen van tweestapsverificatie in Visma (de tekstcode onder de QR-code, "kan je de QR-code niet scannen?"). Achteraf is hij meestal niet meer op te vragen; stel 2FA dan opnieuw in en voeg de sleutel óók toe aan je Authenticator-app.
+> Let op: met deze sleutel én je wachtwoord in `.env` kan iedereen met toegang tot dit bestand inloggen zonder je telefoon. Gebruik dit alleen op je eigen pc.
+> Is de code onjuist, dan vraagt de app hem alsnog handmatig.
+
 ---
 
 ## Problemen?
