@@ -62,6 +62,10 @@ Rijen zonder tijden (lege VAN/TOT) worden beschouwd als vrije dagen en eventueel
 3. Klik op **Bladeren** en selecteer je CSV bestand
 4. Klik op **Start verwerking**
 5. Er opent automatisch een browservenster — laat dit open staan
+6. Vraagt de app om een **2FA-code**? Vul de 6-cijferige code uit je Authenticator-app in (of klik Annuleren en typ hem zelf in het browservenster)
+
+> **Tweestapsverificatie:** het apparaat wordt 30 dagen onthouden, dus je hoeft de code niet elke keer in te vullen.
+> Dit wordt bewaard in de map `.browserprofiel/` (staat niet op GitHub). Verwijder die map om opnieuw in te loggen met code.
 
 Na afloop:
 - Nieuwe dagen worden **ingevoerd**

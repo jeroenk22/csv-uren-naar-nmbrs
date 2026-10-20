@@ -19,7 +19,7 @@ from datetime import datetime
 from pathlib import Path
 from playwright.sync_api import sync_playwright
 import tkinter as tk
-from tkinter import filedialog, messagebox, scrolledtext
+from tkinter import filedialog, messagebox, scrolledtext, simpledialog
 
 # ─────────────────────────────────────────
 ENV_PAD = Path(__file__).parent / '.env'
@@ -34,7 +34,9 @@ WACHTWOORD = os.getenv("WACHTWOORD", "")
 # ─────────────────────────────────────────
 
 NMBRS_LOGIN_URL = "https://login.nmbrsapp.com/index.html"
-NMBRS_START_URL = "https://onlinesalarisportal.nmbrs.nl"
+# Vast browserprofiel, zodat "Onthoud dit apparaat 30 dagen" bij de 2FA-stap blijft werken
+BROWSER_PROFIEL = Path(__file__).parent / '.browserprofiel'
+LOGIN_TIMEOUT   = 300  # seconden
 
 MAANDEN_NL = {
     "januari": 1, "februari": 2, "maart": 3, "april": 4,
@@ -87,6 +89,76 @@ def sluit_popup(page, selector, naam, timeout=5000):
     except Exception:
         pass
 
+def zichtbaar(page, selector):
+    try:
+        return page.locator(selector).first.is_visible()
+    except Exception:
+        return False
+
+def klik_en_wacht(page, actie):
+    """Voert een klik/toets uit en wacht tot de pagina daarna geladen is."""
+    try:
+        with page.expect_navigation(timeout=15000):
+            actie()
+    except Exception:
+        pass
+    page.wait_for_load_state('networkidle')
+
+def log_in(page, email, wachtwoord, log_func, vraag_code_func=None):
+    """Doorloopt de Visma Connect-login (e-mail, wachtwoord, 2FA) tot de salarisportal.
+    Stappen die al onthouden zijn worden vanzelf overgeslagen.
+    Geeft True terug bij succes, False bij een inlogfout of time-out."""
+    page.goto(NMBRS_LOGIN_URL)
+    code_handmatig = False
+    deadline = time.time() + LOGIN_TIMEOUT
+    while time.time() < deadline:
+        page.wait_for_load_state('networkidle')
+        if 'onlinesalarisportal' in page.url:
+            return True
+
+        sluit_popup(page, '#onetrust-accept-btn-handler', 'Cookie popup', timeout=1000)
+
+        fout = ''
+        if zichtbaar(page, '#ErrorMessage'):
+            fout = page.locator('#ErrorMessage').first.inner_text().strip().replace('\n', ' ')
+
+        if '/totp' in page.url:
+            if code_handmatig:
+                time.sleep(1)
+                continue
+            if fout:
+                log_func(f"⚠️  {fout}")
+            log_func("Tweestapsverificatie: vul de code uit je Authenticator-app in...")
+            code = vraag_code_func() if vraag_code_func else None
+            if not code:
+                code_handmatig = True
+                log_func("Geen code ingevuld — vul de code in het browservenster in.")
+                continue
+            veld = page.locator('input:visible:not([type="checkbox"]):not([type="hidden"]):not([type="submit"])').first
+            veld.fill(code.strip())
+            try:
+                onthoud = page.locator('input[type="checkbox"]:visible').first
+                if not onthoud.is_checked():
+                    onthoud.check()
+            except Exception:
+                pass
+            knop = page.locator('#LoginButton:visible, [type="submit"]:visible, button:has-text("Bevestigen"):visible').first
+            klik_en_wacht(page, knop.click if knop.count() else lambda: veld.press('Enter'))
+        elif fout:
+            log_func(f"❌ Inlogfout: {fout}")
+            return False
+        elif zichtbaar(page, 'input[type="password"]'):
+            page.fill('input[type="password"]', wachtwoord)
+            klik_en_wacht(page, lambda: page.click('#LoginButton'))
+        elif zichtbaar(page, '#Username'):
+            page.fill('#Username', email)
+            klik_en_wacht(page, lambda: page.click('#LoginButton'))
+        else:
+            time.sleep(1)
+
+    log_func("❌ Inloggen duurde te lang (salarisportal niet bereikt).")
+    return False
+
 def archiveer_csv(csv_pad):
     archief_map = Path(__file__).parent / "Archief"
     archief_map.mkdir(exist_ok=True)
@@ -94,62 +166,29 @@ def archiveer_csv(csv_pad):
     shutil.copy2(csv_pad, doel)
     return doel
 
-def voer_tijdregistraties_in(email, wachtwoord, rijen, te_verwijderen, log_func, klaar_func, focus_func=None):
+def voer_tijdregistraties_in(email, wachtwoord, rijen, te_verwijderen, log_func, klaar_func, focus_func=None,
+                            vraag_code_func=None):
     try:
         with sync_playwright() as p:
-            browser = p.chromium.launch(headless=False)
-            page = browser.new_page()
+            browser = p.chromium.launch_persistent_context(str(BROWSER_PROFIEL), headless=False)
+            page = browser.pages[0] if browser.pages else browser.new_page()
             if focus_func:
                 focus_func()
 
             log_func("Inloggen bij Nmbrs...")
-            page.goto(NMBRS_LOGIN_URL)
-            page.wait_for_load_state('networkidle')
+            if not log_in(page, email, wachtwoord, log_func, vraag_code_func):
+                browser.close()
+                klaar_func(0, 0, 0, 0, 0)
+                return
 
-            sluit_popup(page, '#onetrust-accept-btn-handler', 'Cookie popup')
-
-            page.fill('input[type="email"]', email)
-            for sel in ['#LoginButton', 'button[type="submit"]', 'button:has-text("Volgende")', 'button:has-text("Next")']:
-                try:
-                    page.click(sel, timeout=3000)
-                    break
-                except Exception:
-                    continue
-            page.wait_for_load_state('networkidle')
-            time.sleep(1)
-
-            sluit_popup(page, '#onetrust-accept-btn-handler', 'Cookie popup')
-
-            page.fill('input[type="password"]', wachtwoord)
-            for sel in ['#LoginButton', 'button[type="submit"]', 'button:has-text("Inloggen")', 'button:has-text("Login")']:
-                try:
-                    page.click(sel, timeout=3000)
-                    break
-                except Exception:
-                    continue
-            page.wait_for_load_state('networkidle')
-            time.sleep(2)
-
-            # Controleer op login-fout
-            for fout_sel in ['.validation-summary-errors', '.alert-danger', '[class*="error"]', '[class*="Error"]']:
-                try:
-                    el = page.locator(fout_sel).first
-                    if el.is_visible(timeout=1500):
-                        fout_tekst = el.inner_text().strip().replace('\n', ' ')
-                        log_func(f"❌ Inlogfout: {fout_tekst}")
-                        browser.close()
-                        klaar_func(0, 0, 0)
-                        return
-                except Exception:
-                    continue
-
-            # Account kiezen — werkt met 0, 1 of meerdere profielen
+            # Account kiezen — bij meerdere profielen het tweede
             try:
                 profielen = page.locator('ul.account-picker-profile')
+                if profielen.count() == 0 and '/Common/Login.aspx' in page.url:
+                    profielen = page.get_by_text('Medewerker Login', exact=True)
                 aantal = profielen.count()
                 if aantal > 0:
-                    profielen.nth(1).click()
-                    page.wait_for_load_state('networkidle')
+                    klik_en_wacht(page, profielen.nth(1 if aantal > 1 else 0).click)
                     time.sleep(2)
                     log_func("Account gekozen!")
             except Exception:
@@ -211,10 +250,14 @@ def voer_tijdregistraties_in(email, wachtwoord, rijen, te_verwijderen, log_func,
             except Exception:
                 pass
 
-            try:
-                page.click('#tabmap_timeregistration-248', timeout=5000)
-            except Exception:
-                page.locator('span.card--list_text:has-text("Tijdregistratie")').first.click()
+            for sel in ['#tabmap_timeregistration-248',
+                        'span.card--list_text:has-text("Tijdregistratie")',
+                        'text="Tijdregistratie"']:
+                try:
+                    page.locator(sel).first.click(timeout=5000)
+                    break
+                except Exception:
+                    continue
 
             page.wait_for_load_state('networkidle')
             time.sleep(2)
@@ -627,9 +670,27 @@ class App:
 
         def run():
             voer_tijdregistraties_in(email, wachtwoord, rijen, te_verwijderen, self.log_schrijf, self.klaar,
-                                     lambda: self.root.after(1500, self._breng_naar_voren))
+                                     lambda: self.root.after(1500, self._breng_naar_voren),
+                                     self.vraag_2fa_code)
 
         threading.Thread(target=run, daemon=True).start()
+
+    def vraag_2fa_code(self):
+        """Vraagt vanuit de werkthread de 2FA-code op via een dialoog in de GUI-thread."""
+        resultaat = {}
+        klaar = threading.Event()
+
+        def vraag():
+            self._breng_naar_voren()
+            resultaat['code'] = simpledialog.askstring(
+                "Tweestapsverificatie",
+                "Voer de 6-cijferige code uit je Authenticator-app in:",
+                parent=self.root)
+            klaar.set()
+
+        self.root.after(0, vraag)
+        klaar.wait()
+        return resultaat.get('code')
 
     def klaar(self, ingevoerd, bijgewerkt, verwijderd, overgeslagen, mislukt):
         self.log_schrijf("─" * 42)
